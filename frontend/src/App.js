@@ -1,3 +1,4 @@
+// App.js
 import React, { useState } from "react";
 import axios from "axios";
 import { FaAppleAlt, FaCarrot, FaBreadSlice, FaDrumstickBite } from "react-icons/fa";
@@ -6,14 +7,17 @@ import "./App.css";
 function App() {
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [data, setData] = useState(null);
+  const [ingredients, setIngredients] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [recipe, setRecipe] = useState("");
   const [loading, setLoading] = useState(false);
 
   const ingredientIcons = {
-    apple: <FaAppleAlt color="#FF6B6B" />,
-    carrot: <FaCarrot color="#FFA500" />,
-    bread: <FaBreadSlice color="#F7DC6F" />,
-    chicken: <FaDrumstickBite color="#C0392B" />,
+    apple: <FaAppleAlt color="#FF7D29" />,
+    carrot: <FaCarrot color="#FF7D29" />,
+    bread: <FaBreadSlice color="#FFBF78" />,
+    chicken: <FaDrumstickBite color="#7B4019" />,
   };
 
   const handleFileChange = (e) => {
@@ -21,57 +25,97 @@ function App() {
     if (file) {
       setImage(file);
       setPreview(URL.createObjectURL(file));
+      setIngredients([]);
+      setSuggestions([]);
+      setSelected(null);
+      setRecipe("");
     }
   };
 
-  const handleUpload = async () => {
+  const detectAndSuggest = async () => {
     if (!image) return alert("Select an image first!");
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append("image", image);
-      const res = await axios.post("http://127.0.0.1:8000/detect-and-retrieve", formData);
-      setData(res.data);
-    } catch (err) {
-      console.error(err);
-      alert("Upload failed. Try again.");
+      const res = await axios.post("https://recipe-generator-1ppm.onrender.com/detect-and-suggest", formData);
+      setIngredients(res.data.detected || []);
+      setSuggestions(res.data.suggestions || []);
+      setSelected(null);
+      setRecipe("");
+    } catch {
+      alert("Detection failed.");
     } finally {
       setLoading(false);
     }
   };
 
+  const pickRecipe = async (name, idx) => {
+    setSelected(idx);
+    setRecipe("");
+    setLoading(true);
+    try {
+      const res = await axios.post("https://recipe-generator-1ppm.onrender.com/generate-recipe", {
+        recipe_name: name,
+        ingredients,
+      });
+      setRecipe(res.data.recipe || "");
+    } catch {
+      alert("Generation failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderRecipe = (text) => {
+    return text
+      .split(/\n+/)
+      .map((line) =>
+        line
+          .replace(/^#+\s*/, "")
+          .replace(/\*\*(.*?)\*\*/g, "$1")
+          .replace(/\*(.*?)\*/g, "$1")
+          .trim()
+      )
+      .map((clean, idx) => {
+        if (/^Title:/i.test(clean)) return <h2 key={idx} style={styles.recipeTitle}>{clean.replace(/^Title:\s*/i, "")}</h2>;
+        if (/^Ingredients:/i.test(clean)) return <h3 key={idx} style={styles.subTitle}>Ingredients</h3>;
+        if (/^- /.test(clean) || /^\* /.test(clean)) return <li key={idx} style={styles.listItem}>{clean.replace(/^[-*]\s*/, "")}</li>;
+        if (/^Instructions:/i.test(clean)) return <h3 key={idx} style={styles.subTitle}>Instructions</h3>;
+        if (/^Step\s*\d+/i.test(clean)) return <h4 key={idx} style={styles.stepTitle}>{clean}</h4>;
+        if (clean) return <p key={idx} style={styles.paragraph}>{clean}</p>;
+        return null;
+      });
+  };
+
   return (
     <div style={styles.container}>
-      {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.title}>🍴 RecGen</h1>
-        <p style={styles.subtitle}>Snap a dish, get recipes instantly!</p>
+        <div style={styles.logo}>🍴</div>
+        <h1 style={styles.title}>RecGen</h1>
+        <p style={styles.subtitle}>Snap a dish, pick a recipe, cook happy.</p>
       </div>
 
-      {/* Main Section */}
       <div style={styles.mainSection}>
-        {/* Left Column */}
         <div style={styles.leftColumn}>
-          {/* Upload Card */}
-          <div style={{ ...styles.card, background: "rgba(255, 255, 255, 0.8)", backdropFilter: "blur(10px)" }}>
+          <div style={{ ...styles.card, background: "rgba(255,255,255,0.85)", backdropFilter: "blur(10px)" }}>
             <h2 style={styles.cardTitle}>Upload Your Dish</h2>
             <input type="file" id="fileInput" style={{ display: "none" }} onChange={handleFileChange} />
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => document.getElementById("fileInput").click()} style={styles.uploadButton}>
                 {image ? "Change Image" : "Choose Image"}
               </button>
-              <button onClick={handleUpload} disabled={loading || !image} style={styles.button}>
-                {loading ? "Processing..." : "Upload"}
+              <button onClick={detectAndSuggest} disabled={loading || !image} style={styles.button}>
+                {loading ? "Processing..." : "Detect & Suggest"}
               </button>
             </div>
             {preview && <img src={preview} alt="Preview" style={styles.previewImage} />}
 
-            {/* Detected Ingredients */}
-            {data && data.detected && (
-              <div style={{ marginTop: "20px" }}>
+            {ingredients.length > 0 && (
+              <div style={{ marginTop: 16 }}>
                 <h3 style={styles.subTitle}>Detected Ingredients</h3>
                 <div style={styles.ingredients}>
-                  {data.detected.map((ing, idx) => (
+                  {ingredients.map((ing, idx) => (
                     <div key={idx} style={styles.ingredientItem}>
                       {ingredientIcons[ing.toLowerCase()] || "🥗"} {ing}
                     </div>
@@ -79,32 +123,37 @@ function App() {
                 </div>
               </div>
             )}
+
+            {suggestions.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <h3 style={styles.subTitle}>Pick a Recipe</h3>
+                <div style={styles.suggestionGrid}>
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => pickRecipe(s, i)}
+                      style={{
+                        ...styles.suggestionBtn,
+                        outline: selected === i ? "3px solid #7B4019" : "none",
+                        transform: selected === i ? "scale(1.02)" : "scale(1.0)",
+                      }}
+                    >
+                      {i + 1}. {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right Column: Recipe */}
         <div style={styles.rightColumn}>
-          {data && data.recipe && (
-            <div style={{ ...styles.card, background: "rgba(255, 255, 255, 0.9)", backdropFilter: "blur(10px)" }}>
+          {recipe && (
+            <div style={{ ...styles.card, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)" }}>
               <h2 style={styles.cardTitle}>Generated Recipe</h2>
-              {data.recipe.split(/\n+/).map((line, idx) => {
-                if (line.startsWith("#### **Ingredients**") || line.startsWith("#### Ingredients")) {
-                  return <h3 key={idx} style={styles.subTitle}>Ingredients</h3>;
-                } else if (line.startsWith("- ") || line.startsWith("* ")) {
-                  return <li key={idx} style={styles.listItem}>{line.replace(/^- /, "")}</li>;
-                } else if (line.startsWith("#### **Instructions**") || line.startsWith("#### Instructions")) {
-                  return <h3 key={idx} style={styles.subTitle}>Instructions</h3>;
-                } else if (line.match(/^\*\*Step \d/)) {
-                  return <h4 key={idx} style={styles.stepTitle}>{line}</h4>;
-                } else if (line.trim() !== "") {
-                  return <p key={idx} style={styles.paragraph}>{line}</p>;
-                } else {
-                  return null;
-                }
-              })}
+              <div>{renderRecipe(recipe)}</div>
             </div>
           )}
-          {data && data.error && <p style={{ color: "red" }}>{data.error}</p>}
         </div>
       </div>
     </div>
@@ -115,41 +164,103 @@ const styles = {
   container: {
     fontFamily: "'Poppins', sans-serif",
     minHeight: "100vh",
-    background: "linear-gradient(120deg, #f0f4ff, #e0fff8)",
-    padding: "40px",
+    background: "linear-gradient(135deg, #FFEEA9, #FFBF78)",
+    padding: 32,
   },
-  header: { textAlign: "center", marginBottom: "30px" },
-  title: { fontSize: "3rem", color: "#4B91F2" },
-  subtitle: { fontSize: "1.2rem", color: "#555" },
-
+  header: {
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  logo: {
+    fontSize: 40,
+    lineHeight: 1,
+  },
+  title: {
+    fontSize: "3rem",
+    color: "#7B4019",
+    margin: 0,
+    fontWeight: 800,
+    letterSpacing: "0.5px",
+  },
+  subtitle: {
+    color: "#7B4019",
+    opacity: 0.9,
+    marginTop: 6,
+  },
   mainSection: {
     display: "flex",
-    gap: "30px",
+    gap: 24,
     width: "100%",
-    justifyContent: "center",
+    maxWidth: 1200,
+    margin: "0 auto",
     alignItems: "flex-start",
     flexWrap: "wrap",
   },
-  leftColumn: { flex: "0 0 300px", minWidth: "280px" },
-  rightColumn: { flex: 1, minWidth: "320px" },
-
+  leftColumn: { flex: "0 0 360px", minWidth: 320 },
+  rightColumn: { flex: 1, minWidth: 360 },
   card: {
-    borderRadius: "20px",
-    padding: "25px",
+    borderRadius: 20,
+    padding: 24,
     boxShadow: "0 15px 35px rgba(0,0,0,0.1)",
   },
-  cardTitle: { color: "#4B91F2", marginBottom: "15px" },
-  uploadButton: { backgroundColor: "#FF6B35", color: "#fff", padding: "10px 20px", borderRadius: "12px", cursor: "pointer" },
-  button: { backgroundColor: "#4B91F2", color: "#fff", padding: "10px 20px", borderRadius: "12px", cursor: "pointer" },
-  previewImage: { marginTop: "15px", maxWidth: "100%", borderRadius: "12px", boxShadow: "0 4px 15px rgba(0,0,0,0.1)" },
-
-  subTitle: { color: "#FF6B35", marginTop: "15px", marginBottom: "8px", fontSize: "1.2rem", fontWeight: "600" },
-  stepTitle: { marginTop: "10px", marginBottom: "5px", fontWeight: "500", color: "#4B91F2" },
-  listItem: { marginBottom: "5px", paddingLeft: "15px" },
-  paragraph: { marginBottom: "10px", lineHeight: "1.5" },
-
-  ingredients: { display: "flex", flexWrap: "wrap", gap: "10px" },
-  ingredientItem: { display: "flex", alignItems: "center", gap: "8px", background: "#f4faff", padding: "6px 12px", borderRadius: "10px", fontWeight: "500" },
+  cardTitle: { color: "#FF7D29", marginBottom: 12, fontWeight: 700 },
+  uploadButton: {
+    backgroundColor: "#FF7D29",
+    color: "#fff",
+    padding: "10px 18px",
+    borderRadius: 12,
+    cursor: "pointer",
+    border: "none",
+  },
+  button: {
+    backgroundColor: "#7B4019",
+    color: "#fff",
+    padding: "10px 18px",
+    borderRadius: 12,
+    cursor: "pointer",
+    border: "none",
+  },
+  previewImage: {
+    marginTop: 14,
+    width: "100%",
+    borderRadius: 14,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+  },
+  subTitle: { color: "#7B4019", marginTop: 12, marginBottom: 8, fontSize: "1.15rem", fontWeight: 700 },
+  stepTitle: { marginTop: 8, marginBottom: 4, fontWeight: 600, color: "#FF7D29" },
+  listItem: { marginBottom: 6, paddingLeft: 16 },
+  paragraph: { marginBottom: 8, lineHeight: 1.6 },
+  ingredients: { display: "flex", flexWrap: "wrap", gap: 10 },
+  ingredientItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "#FFEEA9",
+    padding: "6px 12px",
+    borderRadius: 12,
+    fontWeight: 600,
+    color: "#7B4019",
+  },
+  suggestionGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 10,
+  },
+  suggestionBtn: {
+    textAlign: "left",
+    background: "#FFFFFF",
+    border: "1px solid rgba(123,64,25,0.15)",
+    borderRadius: 14,
+    padding: "12px 14px",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    color: "#7B4019",
+  },
+  recipeTitle: {
+    color: "#7B4019",
+    marginTop: 0,
+    marginBottom: 12,
+  },
 };
 
 export default App;
