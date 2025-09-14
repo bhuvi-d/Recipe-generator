@@ -38,7 +38,7 @@ function App() {
     try {
       const formData = new FormData();
       formData.append("image", image);
-      const res = await axios.post("http://127.0.0.1:8000/detect-and-suggest", formData);
+      const res = await axios.post("https://recipe-generator-1ppm.onrender.com/detect-and-suggest", formData);
       setIngredients(res.data.detected || []);
       setSuggestions(res.data.suggestions || []);
       setSelected(null);
@@ -55,7 +55,7 @@ function App() {
     setRecipe("");
     setLoading(true);
     try {
-      const res = await axios.post("http://127.0.0.1:8000/generate-recipe", {
+      const res = await axios.post("https://recipe-generator-1ppm.onrender.com/generate-recipe", {
         recipe_name: name,
         ingredients,
       });
